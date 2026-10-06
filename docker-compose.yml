@@ -1,0 +1,70 @@
+services:
+
+  # -------------------------------------------------------
+  # Base de données MySQL
+  # -------------------------------------------------------
+  mysql:
+    image: mysql:8.0
+    container_name: projets-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_DATABASE: test_db
+      MYSQL_USER: devops
+      MYSQL_PASSWORD: devops123
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql        # <-- Contrainte : volume persistant
+    networks:
+      - projets-network                  # <-- Contrainte : réseau dédié
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-uroot", "-proot"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+
+  # -------------------------------------------------------
+  # Backend Spring Boot
+  # -------------------------------------------------------
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: projets-backend
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/test_db?createDatabaseIfNotExist=true
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: root
+    ports:
+      - "8083:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy       # <-- Contrainte : démarre après la DB (et prête, pas juste lancée)
+    networks:
+      - projets-network
+
+  # -------------------------------------------------------
+  # Frontend Angular (servi par Nginx)
+  # -------------------------------------------------------
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: projets-frontend
+    restart: unless-stopped
+    ports:
+      - "4200:80"
+    depends_on:
+      - backend                          # <-- Contrainte : démarre après le backend
+    networks:
+      - projets-network
+
+networks:
+  projets-network:                       # <-- Contrainte : réseau Docker dédié
+    driver: bridge
+
+volumes:
+  mysql-data:                            # <-- Contrainte : persistance des données MySQL
